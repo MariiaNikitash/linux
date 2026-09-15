@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/file.h>
 #include <linux/sched/mm.h>
+#include <linux/seq_buf.h>
 
 #include <linux/sunrpc/metrics.h>
 
@@ -2758,17 +2759,16 @@ ff_layout_send_layouterror(struct pnfs_layout_segment *lseg)
 }
 #endif
 
-static int
-ff_layout_ntop4(const struct sockaddr *sap, char *buf, const size_t buflen)
+static void
+ff_layout_ntop4(const struct sockaddr *sap, struct seq_buf *sbuf)
 {
 	const struct sockaddr_in *sin = (struct sockaddr_in *)sap;
 
-	return snprintf(buf, buflen, "%pI4", &sin->sin_addr);
+	seq_buf_printf(sbuf, "%pI4", &sin->sin_addr);
 }
 
-static size_t
-ff_layout_ntop6_noscopeid(const struct sockaddr *sap, char *buf,
-			  const int buflen)
+static void
+ff_layout_ntop6_noscopeid(const struct sockaddr *sap, struct seq_buf *sbuf)
 {
 	const struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sap;
 	const struct in6_addr *addr = &sin6->sin6_addr;
@@ -2778,16 +2778,20 @@ ff_layout_ntop6_noscopeid(const struct sockaddr *sap, char *buf,
 	 *
 	 * Shorthanded ANY address
 	 */
-	if (ipv6_addr_any(addr))
-		return snprintf(buf, buflen, "::");
+	if (ipv6_addr_any(addr)) {
+		seq_buf_puts(sbuf, "::");
+		return;
+	}
 
 	/*
 	 * RFC 4291, Section 2.2.2
 	 *
 	 * Shorthanded loopback address
 	 */
-	if (ipv6_addr_loopback(addr))
-		return snprintf(buf, buflen, "::1");
+	if (ipv6_addr_loopback(addr)) {
+		seq_buf_puts(sbuf, "::1");
+		return;
+	}
 
 	/*
 	 * RFC 4291, Section 2.2.3
@@ -2795,14 +2799,16 @@ ff_layout_ntop6_noscopeid(const struct sockaddr *sap, char *buf,
 	 * Special presentation address format for mapped v4
 	 * addresses.
 	 */
-	if (ipv6_addr_v4mapped(addr))
-		return snprintf(buf, buflen, "::ffff:%pI4",
-					&addr->s6_addr32[3]);
+	if (ipv6_addr_v4mapped(addr)) {
+		seq_buf_printf(sbuf, "::ffff:%pI4",
+			       &addr->s6_addr32[3]);
+		return;
+	}
 
 	/*
 	 * RFC 4291, Section 2.2.1
 	 */
-	return snprintf(buf, buflen, "%pI6c", addr);
+	seq_buf_printf(sbuf, "%pI6c", addr);
 }
 
 /* Derived from rpc_sockaddr2uaddr */
@@ -2810,21 +2816,21 @@ static void
 ff_layout_encode_netaddr(struct xdr_stream *xdr, struct nfs4_pnfs_ds_addr *da)
 {
 	struct sockaddr *sap = (struct sockaddr *)&da->da_addr;
-	char portbuf[RPCBIND_MAXUADDRPLEN];
 	char addrbuf[RPCBIND_MAXUADDRLEN];
+	struct seq_buf sbuf;
 	unsigned short port;
 	int len, netid_len;
 	__be32 *p;
 
+	seq_buf_init(&sbuf, addrbuf, sizeof(addrbuf));
+
 	switch (sap->sa_family) {
 	case AF_INET:
-		if (ff_layout_ntop4(sap, addrbuf, sizeof(addrbuf)) == 0)
-			return;
+		ff_layout_ntop4(sap, &sbuf);
 		port = ntohs(((struct sockaddr_in *)sap)->sin_port);
 		break;
 	case AF_INET6:
-		if (ff_layout_ntop6_noscopeid(sap, addrbuf, sizeof(addrbuf)) == 0)
-			return;
+		ff_layout_ntop6_noscopeid(sap, &sbuf);
 		port = ntohs(((struct sockaddr_in6 *)sap)->sin6_port);
 		break;
 	default:
@@ -2832,8 +2838,11 @@ ff_layout_encode_netaddr(struct xdr_stream *xdr, struct nfs4_pnfs_ds_addr *da)
 		return;
 	}
 
-	snprintf(portbuf, sizeof(portbuf), ".%u.%u", port >> 8, port & 0xff);
-	len = strlcat(addrbuf, portbuf, sizeof(addrbuf));
+	seq_buf_printf(&sbuf, ".%u.%u", port >> 8, port & 0xff);
+	if (seq_buf_has_overflowed(&sbuf))
+		return;
+
+	len = seq_buf_used(&sbuf);
 
 	netid_len = strlen(da->da_netid);
 	p = xdr_reserve_space(xdr, 4 + netid_len);
