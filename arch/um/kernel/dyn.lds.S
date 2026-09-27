@@ -113,7 +113,7 @@ SECTIONS
     *(.init_array.*)
     *(.init_array)
   }
-  .fini_array     : { *(.fini_array) }
+  .fini_array     : { *(.fini_array.*) *(.fini_array) }
   .data           : {
     INIT_TASK_DATA(KERNEL_STACK_SIZE)
     DATA_DATA
