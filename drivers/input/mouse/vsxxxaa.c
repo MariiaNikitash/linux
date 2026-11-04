@@ -463,8 +463,8 @@ static int vsxxxaa_connect(struct serio *serio, struct serio_driver *drv)
 
 	mouse->dev = input_dev;
 	mouse->serio = serio;
-	strlcat(mouse->name, "DEC VSXXX-AA/-GA mouse or VSXXX-AB digitizer",
-		 sizeof(mouse->name));
+	strscpy(mouse->name, "DEC VSXXX-AA/-GA mouse or VSXXX-AB digitizer",
+		sizeof(mouse->name));
 	snprintf(mouse->phys, sizeof(mouse->phys), "%s/input0", serio->phys);
 
 	input_dev->name = mouse->name;
