@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/slab.h>
+#include <linux/seq_buf.h>
 #include <linux/sched.h>
 #include <asm/io.h>
 #include <media/v4l2-device.h>
@@ -221,10 +222,15 @@ static int vidioc_querycap(struct file *file, void  *priv,
 					struct v4l2_capability *v)
 {
 	struct snd_tea575x *tea = video_drvdata(file);
+	struct seq_buf s;
 
 	strscpy(v->driver, tea->v4l2_dev->name, sizeof(v->driver));
-	strscpy(v->card, tea->card, sizeof(v->card));
-	strlcat(v->card, tea->tea5759 ? " TEA5759" : " TEA5757", sizeof(v->card));
+
+	seq_buf_init(&s, (char *)v->card, sizeof(v->card));
+	seq_buf_puts(&s, (const char *)tea->card);
+	seq_buf_puts(&s, tea->tea5759 ? " TEA5759" : " TEA5757");
+	seq_buf_terminate(&s);
+
 	strscpy(v->bus_info, tea->bus_info, sizeof(v->bus_info));
 	return 0;
 }

@@ -13,6 +13,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/sched.h>
+#include <linux/seq_buf.h>
 #include <linux/slab.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-dev.h>
@@ -255,10 +256,15 @@ static int vidioc_querycap(struct file *file, void  *priv,
 					struct v4l2_capability *v)
 {
 	struct radio_tea5777 *tea = video_drvdata(file);
+	struct seq_buf s;
 
 	strscpy(v->driver, tea->v4l2_dev->name, sizeof(v->driver));
-	strscpy(v->card, tea->card, sizeof(v->card));
-	strlcat(v->card, " TEA5777", sizeof(v->card));
+
+	seq_buf_init(&s, (char *)v->card, sizeof(v->card));
+	seq_buf_puts(&s, (const char *)tea->card);
+	seq_buf_puts(&s, " TEA5777");
+	seq_buf_terminate(&s);
+
 	strscpy(v->bus_info, tea->bus_info, sizeof(v->bus_info));
 	return 0;
 }
